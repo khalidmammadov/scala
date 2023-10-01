@@ -1,6 +1,7 @@
 import java.text.SimpleDateFormat
 import java.util.concurrent.{Executors, TimeUnit}
 import java.util.{Date, Timer, TimerTask}
+import scala.annotation.tailrec
 import scala.concurrent.ExecutionContext
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.DurationInt
@@ -55,16 +56,13 @@ object Retry {
   }
 
   def withRetry[T](retryCount: Int, retryNo: Int = 0)(block: => T): Future[T] = {
-    val fut = delayedRun(block, 2.seconds.toMillis).recoverWith{
+    delayedRun(block, 2.seconds.toMillis).recoverWith{
       case e: Throwable =>
-        if (retryCount > 0) {
-          println(s"Retrying with new Future ${formatter.format(new Date())} in Thread ${Thread.currentThread().getId}")
-          withRetry(retryCount-1, retryNo+1)(block)
-        }
-        else
-          throw e
+        if (retryCount == 0) throw e
+
+        println(s"Retrying with new Future ${formatter.format(new Date())} in Thread ${Thread.currentThread().getId}")
+        withRetry(retryCount-1, retryNo+1)(block)
     }
-    fut
   }
 
   def delayedRun[T](block: => T, delay: Long): Future[T] = {
@@ -73,10 +71,8 @@ object Retry {
     val task = new TimerTask {
       override def run(): Unit = {
         println(s"Timer Thread ${Thread.currentThread().getId}")
-        Future{
-          println(s"Running time task in new Future ${formatter.format(new Date())} in Thread ${Thread.currentThread().getId}")
-          p.complete(Try(block))
-        }
+        println(s"Running time task in new Future ${formatter.format(new Date())} in Thread ${Thread.currentThread().getId}")
+        p.complete(Try(block))
       }
     }
 
